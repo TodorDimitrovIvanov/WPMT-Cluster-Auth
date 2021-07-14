@@ -1,9 +1,11 @@
 import base64
+import json
 
+import requests
 import uvicorn
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import mysql.connector
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -14,9 +16,16 @@ app = FastAPI()
 __master_url__ = "https://master.wpmt.tech"
 
 __cluster_name__ = "cluster-eu01.wpmt.tech"
-__cluster_url__ = "https://cluster-eu01.wpmt.tech"
+__cluster_url__ = "http://cluster-eu01.wpmt.tech"
+__cluster_logger_url__ = "http://cluster-eu01.wpmt.tech/log/save"
 __cluster_locale__ = "EU"
 __cluster_user_count__ = None
+__app_headers__ = {
+    'Host': 'cluster-eu01.wpmt.org',
+    'User-Agent': 'WPMT-Auth/1.0',
+    'Referer': 'http://cluster-eu01.wpmt.org/auth/verify',
+    'Content-Type': 'application/json'
+}
 
 # TODO: Remove this code once the K8S implementation is completed
 # Source: https://stackoverflow.com/questions/60343474/how-to-get-secret-environment-variables-implemented-by-kubernetes-into-python
@@ -35,6 +44,19 @@ def mysql_details_get():
 
 def key_to_utf8(s: bytes):
     return str(s, 'utf-8')
+
+
+def send_to_logger(client_id, client_email, message):
+    # TODO: Find a way to get the user's IP address and add it to the message
+    print("Message: ", message, "Type: ", type(message))
+    global __app_headers__
+    body = {
+        "client_id": client_id,
+        "email": client_email,
+        "type": "access",
+        "message": message
+    }
+    send_request = requests.post(__cluster_logger_url__, data=json.dumps(body), headers=__app_headers__)
 
 
 def cluster_user_verify(email, encrypted_mail):
@@ -58,16 +80,15 @@ def cluster_user_verify(email, encrypted_mail):
             )
             if connection.is_connected():
                 cursor = connection.cursor()
-                mysql_query = "SELECT client_email, client_priv_key FROM users WHERE client_email = %s"
+                mysql_query = "SELECT client_email, client_priv_key, client_id FROM users WHERE client_email = %s"
                 mysql_data = email
                 cursor.execute(mysql_query, (mysql_data,))
-                # This should return a list of the results - the email (1st) and the priv_key (2nd)
-                # Both elements of the list should be strings
+                # This should return a list of the results - the email (1st), the priv_key (2nd) and the client_id (3rd)
+                # All elements of the list should be strings
                 sql_result = cursor.fetchall()
-                print("SQL Result: ", sql_result[0][0], "Type: ", type(sql_result[0][0]))
 
                 # First we clean up the private key by removing new lines
-                raw_key = sql_result[0][1]#.replace('\n', '')
+                raw_key = sql_result[0][1]
 
                 # Here we transform the string key into a bytes object
                 # As it is required by the load_pem_private_key function
@@ -90,23 +111,28 @@ def cluster_user_verify(email, encrypted_mail):
                     )
                 )
 
-                print("MySQL Fetched Email: ", sql_result[0][0], "Type: ", type(sql_result[0][0]))
-                print("MySQL Fetched Key: ", sql_result[0][1], "Type: ", type(sql_result[0][1]))
-                print("Original Email Sent: ", email, "Type: ", type(email))
-                print("Original Message Sent: ", encrypted_mail, "Type: ", type(encrypted_mail))
-                print("Decrypted Message: ", key_to_utf8(decrypted_mail), "Type: ", type(key_to_utf8(decrypted_mail)))
+                # Debug prints:
+                # print("MySQL Fetched Email: ", sql_result[0][0], "Type: ", type(sql_result[0][0]))
+                # print("MySQL Fetched Key: ", sql_result[0][1], "Type: ", type(sql_result[0][1]))
+                # print("MySQL Fetched Client ID: ", sql_result[0][2], "Type: ", type(sql_result[0][2]))
+                # print("Original Email Sent: ", email, "Type: ", type(email))
+                # print("Original Message Sent: ", encrypted_mail, "Type: ", type(encrypted_mail))
+                # print("Decrypted Message: ", key_to_utf8(decrypted_mail), "Type: ", type(key_to_utf8(decrypted_mail)))
 
-                # To compare the
                 if key_to_utf8(decrypted_mail) == sql_result[0][0]:
-                    # TODO: Send to the Logger
+                    log_message = "[Cluster][Access][Auth][" + sql_result[0][2] + "]" + "[200]" # + IP ADDRESS
+                    send_to_logger(sql_result[0][2], sql_result[0][0], log_message)
                     return True
                 else:
-                    # TODO: Send to the Logger
+                    log_message = "[Cluster][Access][Auth][" + sql_result[0][2] + "]" + "[403]"  # + IP ADDRESS
+                    send_to_logger(sql_result[0][2], sql_result[0][0], log_message)
                     return False
-
         except mysql.connector.Error as e:
-            # TODO: Send to the Logger
-            print("[Cluster][DB][Err][01]: Error while starting the K8S MySQL Connection. Error: [", e, "].")
+            message = "[Cluster][Error][DB][01][" + sql_result[0][2] + ": Error while starting the K8S MySQL Connection! Full error: [" + str(e) + "]."
+            send_to_logger(sql_result[0][2], sql_result[0][0], message)
+        except ValueError as e:
+            message = "[Cluster][Error][Auth][01][" + sql_result[0][2] + ": Couldn't decrypt message! Full error: [" + str(e) + "]."
+            send_to_logger(sql_result[0][2], sql_result[0][0], message)
         finally:
             pass
 
@@ -127,9 +153,10 @@ def user_verify(user_verify: UserVerification):
         }
     else:
         # Here we should send a 403 Forbidden response to the WPMT User API
-        return {
-            "Response": "Access Denied!"
-        }
+        raise HTTPException (
+            status_code = 403,
+            detail = "Access Denied!"
+        )
 
 
 if __name__ == '__main__':
