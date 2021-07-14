@@ -1,4 +1,8 @@
+import base64
+
 import uvicorn
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from fastapi import FastAPI
 from pydantic import BaseModel
 import mysql.connector
@@ -29,6 +33,10 @@ def mysql_details_get():
     pass
 
 
+def key_to_utf8(s: bytes):
+    return str(s, 'utf-8')
+
+
 def cluster_user_verify(email, encrypted_mail):
     # Source: https://cryptography.io/en/latest/hazmat/primitives/asymmetric/rsa/#decryption
     ''' Whenever the client tries to sign in with his email and public_key
@@ -39,6 +47,8 @@ def cluster_user_verify(email, encrypted_mail):
         And finally we use the client's private_key to decrypt the encrypted email address that was sent earlier
         And if matches what we have in store we return a 200 OK to the WPMT User API'''
     if None not in [email, encrypted_mail]:
+        # Here email is the string that the client inputs via the WPMT Client
+        # And encrypted mail is the result of using the client's public_key which he also provides in the WPMT Client
         try:
             connection = mysql.connector.connect(
                 host=__mysql_host__,
@@ -48,22 +58,46 @@ def cluster_user_verify(email, encrypted_mail):
             )
             if connection.is_connected():
                 cursor = connection.cursor()
-                mysql_query = "SELECT email, priv_key FROM users WHERE email = %s"
+                mysql_query = "SELECT client_email, client_priv_key FROM users WHERE client_email = %s"
                 mysql_data = email
                 cursor.execute(mysql_query, (mysql_data,))
                 # This should return a list of the results - the email (1st) and the priv_key (2nd)
-                priv_key = cursor.fetchall()
+                # Both elements of the list should be strings
+                sql_result = cursor.fetchall()
+                print("SQL Result: ", sql_result[0][0], "Type: ", type(sql_result[0][0]))
 
-                decrypted_mail = priv_key[1].decrypt(
-                    encrypted_mail,
+                # First we clean up the private key by removing new lines
+                raw_key = sql_result[0][1]#.replace('\n', '')
+
+                # Here we transform the string key into a bytes object
+                # As it is required by the load_pem_private_key function
+                encoded_key = raw_key.encode()
+                private_key = load_pem_private_key(
+                    encoded_key,
+                    backend=default_backend(),
+                    password=None
+                )
+
+                # Here we decrypt the message that was sent by the WPMT Client
+                # Note: The decrypted_mail result should be of type bytes
+                decrypted_mail = private_key.decrypt(
+                    # We decode the base64 encoded message
+                    base64.b64decode(encrypted_mail),
                     padding.OAEP(
                         mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                        algorithm=hashes.SHA256,
+                        algorithm=hashes.SHA256(),
                         label=None
                     )
                 )
-                # Not sure what type the "decrypted_mail" var will be
-                if decrypted_mail == priv_key[0]:
+
+                print("MySQL Fetched Email: ", sql_result[0][0], "Type: ", type(sql_result[0][0]))
+                print("MySQL Fetched Key: ", sql_result[0][1], "Type: ", type(sql_result[0][1]))
+                print("Original Email Sent: ", email, "Type: ", type(email))
+                print("Original Message Sent: ", encrypted_mail, "Type: ", type(encrypted_mail))
+                print("Decrypted Message: ", key_to_utf8(decrypted_mail), "Type: ", type(key_to_utf8(decrypted_mail)))
+
+                # To compare the
+                if key_to_utf8(decrypted_mail) == sql_result[0][0]:
                     # TODO: Send to the Logger
                     return True
                 else:
@@ -82,15 +116,20 @@ class UserVerification(BaseModel):
     encrypted_email: str
 
 
-@app.post("/user/verify")
+@app.post("/auth/verify")
 def user_verify(user_verify: UserVerification):
     data_dic = user_verify.dict()
-    if cluster_user_verify(data_dic['email'], data_dic['encrypted_mail']):
+    # TODO: Add input verification and error handling
+    if cluster_user_verify(data_dic['email'], data_dic['encrypted_email']):
         # Here we should send a 200 OK response to the WPMT User API
-        pass
+        return{
+            "Response": "Success!"
+        }
     else:
         # Here we should send a 403 Forbidden response to the WPMT User API
-        pass
+        return {
+            "Response": "Access Denied!"
+        }
 
 
 if __name__ == '__main__':
