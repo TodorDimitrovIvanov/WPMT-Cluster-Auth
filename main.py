@@ -1,4 +1,3 @@
-import base64
 import json
 
 import requests
@@ -46,14 +45,13 @@ def key_to_utf8(s: bytes):
     return str(s, 'utf-8')
 
 
-def send_to_logger(client_id, client_email, message):
+def send_to_logger(err_type, message, client_id, client_email):
     # TODO: Find a way to get the user's IP address and add it to the message
-    print("Message: ", message, "Type: ", type(message))
     global __app_headers__
     body = {
         "client_id": client_id,
         "email": client_email,
-        "type": "access",
+        "type": err_type,
         "message": message
     }
     send_request = requests.post(__cluster_logger_url__, data=json.dumps(body), headers=__app_headers__)
@@ -88,7 +86,7 @@ def cluster_user_verify(email, encrypted_mail):
                 sql_result = cursor.fetchall()
 
                 # First we clean up the private key by removing new lines
-                raw_key = sql_result[0][1]
+                raw_key = sql_result[0][1].replace('\\n', '\n')
 
                 # Here we transform the string key into a bytes object
                 # As it is required by the load_pem_private_key function
@@ -100,10 +98,10 @@ def cluster_user_verify(email, encrypted_mail):
                 )
 
                 # Here we decrypt the message that was sent by the WPMT Client
-                # Note: The decrypted_mail result should be of type bytes
+                # First we convert it from hex to bytes type
+                bytes_message = bytes.fromhex(encrypted_mail)
                 decrypted_mail = private_key.decrypt(
-                    # We decode the base64 encoded message
-                    base64.b64decode(encrypted_mail),
+                    bytes_message,
                     padding.OAEP(
                         mgf=padding.MGF1(algorithm=hashes.SHA256()),
                         algorithm=hashes.SHA256(),
@@ -111,30 +109,18 @@ def cluster_user_verify(email, encrypted_mail):
                     )
                 )
 
-                # Debug prints:
-                # print("MySQL Fetched Email: ", sql_result[0][0], "Type: ", type(sql_result[0][0]))
-                # print("MySQL Fetched Key: ", sql_result[0][1], "Type: ", type(sql_result[0][1]))
-                # print("MySQL Fetched Client ID: ", sql_result[0][2], "Type: ", type(sql_result[0][2]))
-                # print("Original Email Sent: ", email, "Type: ", type(email))
-                # print("Original Message Sent: ", encrypted_mail, "Type: ", type(encrypted_mail))
-                # print("Decrypted Message: ", key_to_utf8(decrypted_mail), "Type: ", type(key_to_utf8(decrypted_mail)))
-
                 if key_to_utf8(decrypted_mail) == sql_result[0][0]:
                     log_message = "[Cluster][Access][Auth][" + sql_result[0][2] + "]" + "[200]" # + IP ADDRESS
-                    send_to_logger(sql_result[0][2], sql_result[0][0], log_message)
+                    send_to_logger("info", log_message, sql_result[0][2], sql_result[0][0])
                     return True
                 else:
                     log_message = "[Cluster][Access][Auth][" + sql_result[0][2] + "]" + "[403]"  # + IP ADDRESS
-                    send_to_logger(sql_result[0][2], sql_result[0][0], log_message)
+                    send_to_logger("info", log_message, sql_result[0][2], sql_result[0][0])
                     return False
         except mysql.connector.Error as e:
-            message = "[Cluster][Error][DB][01][" + sql_result[0][2] + ": Error while starting the K8S MySQL Connection! Full error: [" + str(e) + "]."
-            send_to_logger(sql_result[0][2], sql_result[0][0], message)
-        except ValueError as e:
-            message = "[Cluster][Error][Auth][01][" + sql_result[0][2] + ": Couldn't decrypt message! Full error: [" + str(e) + "]."
-            send_to_logger(sql_result[0][2], sql_result[0][0], message)
-        finally:
-            pass
+            message = "[Cluster][Error][DB][01][" + sql_result[0][2] + "]: Error while starting the K8S MySQL Connection! Full error: [" + str(e) + "]."
+            send_to_logger("error", message, sql_result[0][2], sql_result[0][0])
+            return False
 
 
 class UserVerification(BaseModel):
@@ -142,21 +128,20 @@ class UserVerification(BaseModel):
     encrypted_email: str
 
 
-@app.post("/auth/verify")
+@app.post("/auth/verify", status_code=200)
 def user_verify(user_verify: UserVerification):
     data_dic = user_verify.dict()
     # TODO: Add input verification and error handling
     if cluster_user_verify(data_dic['email'], data_dic['encrypted_email']):
         # Here we should send a 200 OK response to the WPMT User API
         return{
-            "Response": "Success!"
+            "Response": "Success"
         }
     else:
         # Here we should send a 403 Forbidden response to the WPMT User API
-        raise HTTPException (
-            status_code = 403,
-            detail = "Access Denied!"
-        )
+        return{
+            "Response": "Failure"
+        }
 
 
 if __name__ == '__main__':
