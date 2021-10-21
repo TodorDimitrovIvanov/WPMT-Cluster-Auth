@@ -145,5 +145,5 @@ def user_verify(user_verify: UserVerification):
 
 
 if __name__ == '__main__':
-    uvicorn.run(app, host='localhost', port=6901)
+    uvicorn.run(app, host='127.0.0.1', port=6901)
 
