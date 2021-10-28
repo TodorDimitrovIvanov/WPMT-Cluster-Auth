@@ -14,15 +14,15 @@ app = FastAPI()
 
 __master_url__ = "https://master.wpmt.tech"
 
-__cluster_name__ = "cluster-eu01.wpmt.tech"
-__cluster_url__ = "http://cluster-eu01.wpmt.tech"
-__cluster_logger_url__ = "http://cluster-eu01.wpmt.tech/log/save"
+__cluster_name__ = "cluster-eu02.wpmt.tech"
+__cluster_url__ = "http://cluster-eu02.wpmt.tech"
+__cluster_logger_url__ = "http://cluster-eu02.wpmt.tech/log/save"
 __cluster_locale__ = "EU"
 __cluster_user_count__ = None
 __app_headers__ = {
-    'Host': 'cluster-eu01.wpmt.org',
+    'Host': 'cluster-eu02.wpmt.org',
     'User-Agent': 'WPMT-Auth/1.0',
-    'Referer': 'http://cluster-eu01.wpmt.org/auth/verify',
+    'Referer': 'http://cluster-eu02.wpmt.org/auth/verify',
     'Content-Type': 'application/json'
 }
 
@@ -30,8 +30,8 @@ __app_headers__ = {
 # Source: https://stackoverflow.com/questions/60343474/how-to-get-secret-environment-variables-implemented-by-kubernetes-into-python
 # This variable is set by Kubernetes via the "secretGenerator.yaml" file
 __mysql_host__ = "localhost"
-__mysql_db__ = "cluster_eu01"
-__mysql_user__ = "cluser_eu01_user"
+__mysql_db__ = "cluster_eu02"
+__mysql_user__ = "cluser_eu02_user"
 __mysql_pass__ = "kP6hE3zE7aJ7nQ6i"
 
 
@@ -145,5 +145,5 @@ def user_verify(user_verify: UserVerification):
 
 
 if __name__ == '__main__':
-    uvicorn.run(app, host='127.0.0.1', port=6901)
+    uvicorn.run(app, host='0.0.0.0', port=6901)
 
