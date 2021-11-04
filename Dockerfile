@@ -1,6 +1,6 @@
 # Source: https://docs.docker.com/language/python/build-images/
 # Source: https://docs.docker.com/develop/develop-images/baseimages/
-FROM python:3
+FROM python:3.9.7-buster
 # Here we set the workdir that Docker will automatically create
 # And use as the default location from here on
 WORKDIR /root/app
