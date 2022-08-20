@@ -30,8 +30,8 @@ __app_headers__ = {
 # Source: https://stackoverflow.com/questions/60343474/how-to-get-secret-environment-variables-implemented-by-kubernetes-into-python
 # This variable is set by Kubernetes via the "secretGenerator.yaml" file
 __mysql_host__ = "localhost"
-__mysql_db__ = "cluster_eu02"
-__mysql_user__ = "cluser_eu02_user"
+__mysql_db__ = "cluster_eu01"
+__mysql_user__ = "cluser_eu01_user"
 __mysql_pass__ = "kP6hE3zE7aJ7nQ6i"
 
 
