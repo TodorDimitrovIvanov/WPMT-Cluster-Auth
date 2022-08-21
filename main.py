@@ -14,15 +14,15 @@ app = FastAPI()
 
 __master_url__ = "https://master.wpmt.tech"
 
-__cluster_name__ = "cluster-eu02.wpmt.tech"
-__cluster_url__ = "http://cluster-eu02.wpmt.tech"
-__cluster_logger_url__ = "http://cluster-eu02.wpmt.tech/log/save"
+__cluster_name__ = "cluster-eu01.wpmt.tech"
+__cluster_url__ = "http://cluster-eu01.wpmt.tech"
+__cluster_logger_url__ = "http://cluster-eu01.wpmt.tech/log/save"
 __cluster_locale__ = "EU"
 __cluster_user_count__ = None
 __app_headers__ = {
-    'Host': 'cluster-eu02.wpmt.org',
+    'Host': 'cluster-eu01.wpmt.org',
     'User-Agent': 'WPMT-Auth/1.0',
-    'Referer': 'http://cluster-eu02.wpmt.org/auth/verify',
+    'Referer': 'http://cluster-eu01.wpmt.org/auth/verify',
     'Content-Type': 'application/json'
 }
 
