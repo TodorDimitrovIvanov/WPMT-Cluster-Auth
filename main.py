@@ -2,6 +2,7 @@ import json
 
 import requests
 import uvicorn
+import logging
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from fastapi import FastAPI, HTTPException
@@ -16,7 +17,8 @@ __master_url__ = "https://master.wpmt.tech"
 
 __cluster_name__ = "cluster-eu01.wpmt.tech"
 __cluster_url__ = "http://cluster-eu01.wpmt.tech"
-__cluster_logger_url__ = "http://cluster-eu01.wpmt.tech/log/save"
+#__cluster_logger_url__ = "http://cluster-eu01.wpmt.tech/log/save"
+__cluster_log_file__ = "/etc/log/wpmt/auth"
 __cluster_locale__ = "EU"
 __cluster_user_count__ = None
 __app_headers__ = {
@@ -25,6 +27,10 @@ __app_headers__ = {
     'Referer': 'http://cluster-eu01.wpmt.org/auth/verify',
     'Content-Type': 'application/json'
 }
+
+logging.basicConfig(level="WARNING",
+                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                    filename=__cluster_log_file__)
 
 # TODO: Remove this code once the K8S implementation is completed
 # Source: https://stackoverflow.com/questions/60343474/how-to-get-secret-environment-variables-implemented-by-kubernetes-into-python
@@ -54,7 +60,8 @@ def send_to_logger(err_type, message, client_id, client_email):
         "type": err_type,
         "message": message
     }
-    send_request = requests.post(__cluster_logger_url__, data=json.dumps(body), headers=__app_headers__)
+    logging.warning("")
+    #send_request = requests.post(__cluster_logger_url__, data=json.dumps(body), headers=__app_headers__)
 
 
 def cluster_user_verify(email, encrypted_mail):
